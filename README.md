@@ -11,7 +11,7 @@
 - Security Groups (Firewalls)
 - Key Pair for SSH Access
 
-![Infrastructure Diagram](https://github.com/AliKhaledElbaqly/terraform-aws-infra/blob/main/Infrastructure%20Diagram.jpeg?raw=true)
+![Infrastructure Diagram](https://res.cloudinary.com/dmt3wghiv/image/upload/v1754553797/Infrastructure_Diagram_meuzh9.jpg)
 
 <hr style="margin-top: 30px; margin-bottom: -12px;">
 
