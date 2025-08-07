@@ -1,3 +1,6 @@
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+![HCL](https://img.shields.io/badge/language-HCL-blue.svg)
+
 # AWS Infrastructure with Terraform
 <hr style="margin-top: -20px; margin-bottom: -12px;">
 
