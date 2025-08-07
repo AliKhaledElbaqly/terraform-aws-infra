@@ -11,7 +11,7 @@
 - Security Groups (Firewalls)
 - Key Pair for SSH Access
 
-![Infrastructure overview]([https://github.com/AliKhaledElbaqly/AWS-PROJECT-1/blob/main/Media/vpc%20&%20subnets%20.png?raw=true](https://github.com/AliKhaledElbaqly/terraform-aws-infra/blob/main/Infrastructure%20Diagram%20.jpeg?raw=true))
+![Infrastructure overview](https://github.com/AliKhaledElbaqly/AWS-PROJECT-1/blob/main/Media/vpc%20&%20subnets%20.png?raw=true](https://github.com/AliKhaledElbaqly/terraform-aws-infra/blob/main/Infrastructure%20Diagram%20.jpeg?raw=true)
 
 <hr style="margin-top: 30px; margin-bottom: -12px;">
 
