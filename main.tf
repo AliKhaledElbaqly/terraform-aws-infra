@@ -1,121 +1,124 @@
-// define the main vpc 
+locals {
+  common_tags = {
+    terraform = "true"
+  }
+}
+
+// Define the main VPC
 resource "aws_vpc" "mainvpc" {
   cidr_block = var.vpc_cidr
 
-  tags = {
-    Name = var.vpc_name
+  tags = merge(local.common_tags, {
+    Name        = var.vpc_name
     Environment = "test_environment"
-    terraform = "true"
-  }
+  })
 }
 
-// define the public subnect for internet access
-
+// Define public subnets
 resource "aws_subnet" "public_subnets" {
-  vpc_id = aws_vpc.mainvpc.id
   for_each = var.public_subnets
-  cidr_block = cidrsubnet(var.vpc_cidr, 8, each.value)
+
+  vpc_id                  = aws_vpc.mainvpc.id
+  cidr_block              = cidrsubnet(var.vpc_cidr, 8, each.value)
+  availability_zone       = each.key
   map_public_ip_on_launch = true
-  availability_zone = each.key
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "${each.key}_public_subnet"
-    terraform = "true"
-  }
+  })
 }
 
-// define the private subents for database 
+// Define private subnets
 resource "aws_subnet" "private_subnets" {
-  vpc_id = aws_vpc.mainvpc.id
   for_each = var.private_subnets
-  cidr_block = cidrsubnet(var.vpc_cidr, 8, each.value)
+
+  vpc_id            = aws_vpc.mainvpc.id
+  cidr_block        = cidrsubnet(var.vpc_cidr, 8, each.value)
   availability_zone = each.key
 
-  tags = {
-    Name = "${each.key}_private_subent"
-    terraform = "true"
-  }
+  tags = merge(local.common_tags, {
+    Name = "${each.key}_private_subnet"
+  })
 }
 
-// create the internet gateway
+// Create internet gateway
 resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.mainvpc.id
 
   tags = {
-    Name = "terra_igw"
+    Name = "project_igw"
   }
 }
-// create the EIP for the NAT 
+
+// Create EIP for NAT
 resource "aws_eip" "nat_gateway_eip" {
-  domain = "vpc"
-  depends_on = [ aws_internet_gateway.internet_gateway ]
+  domain     = "vpc"
+depends_on = [aws_internet_gateway.`]
 
   tags = {
     Name = "terra_eip"
   }
 }
 
-// create the nat using the eip
+// Create NAT gateway
 resource "aws_nat_gateway" "nat_gateway" {
   allocation_id = aws_eip.nat_gateway_eip.id
-  subnet_id = aws_subnet.public_subnets["eu-north-1a"].id
-  depends_on = [ aws_subnet.public_subnets ]
+  subnet_id     = aws_subnet.public_subnets["eu-north-1a"].id
+
+  depends_on = [aws_subnet.public_subnets]
 
   tags = {
     Name = "terra_nat_gateway"
   }
 }
 
-// create rtb for private subnets 
+// Route table for private subnets
 resource "aws_route_table" "private_route_table" {
   vpc_id = aws_vpc.mainvpc.id
 
   route {
-    cidr_block = "0.0.0.0/0"
+    cidr_block     = "0.0.0.0/0"
     nat_gateway_id = aws_nat_gateway.nat_gateway.id
   }
-    tags = {
-      Name = "private_rtb"
-      terraform = "true"
-    }
+
+  tags = merge(local.common_tags, {
+    Name = "private_rtb"
+  })
 }
 
-
-// create rtb association for prv sub
+// Associate route table with private subnets
 resource "aws_route_table_association" "private" {
-  depends_on = [ aws_subnet.private_subnets ]
-  route_table_id = aws_route_table.private_route_table.id
   for_each = aws_subnet.private_subnets
-  subnet_id = each.value.id
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.private_route_table.id
 }
 
-// create a rtb for public subnet 
+// Route table for public subnets
 resource "aws_route_table" "public" {
   vpc_id = aws_vpc.mainvpc.id
 
-  route  {
+  route {
     cidr_block = "0.0.0.0/0"
     gateway_id = aws_internet_gateway.internet_gateway.id
   }
 
-  tags = {
+  tags = merge(local.common_tags, {
     Name = "public_rtb"
-    terraform = "true"
-  }
+  })
 }
 
-// associate the rtb with the public sub 
+// Associate route table with public subnets
 resource "aws_route_table_association" "public" {
-  route_table_id = aws_route_table.public.id
   for_each = aws_subnet.public_subnets
-  subnet_id = each.value.id
-  depends_on = [ aws_subnet.public_subnets ]
+
+  subnet_id      = each.value.id
+  route_table_id = aws_route_table.public.id
 }
 
-// create the SG For EC resources 
-
+// Security group for EC2
 resource "aws_security_group" "webSG" {
-  name = "WebSG"
+  name   = "WebSG"
   vpc_id = aws_vpc.mainvpc.id
 
   dynamic "ingress" {
@@ -125,101 +128,111 @@ resource "aws_security_group" "webSG" {
       from_port   = port.value
       to_port     = port.value
       protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"] 
+      cidr_blocks = ["0.0.0.0/0"]
     }
   }
+
+  egress {
+    from_port   = 0
+    to_port     = 0
+    protocol    = "-1"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
+  tags = merge(local.common_tags, {
+    Name = "web-sg"
+  })
 }
 
-// lets make our key_pair using ssh-keygin command 
-
+// SSH key pair
 resource "aws_key_pair" "SSH" {
-  key_name = "AuthSSH"
+  key_name   = "AuthSSH"
   public_key = file("~/.ssh/authkey.pub")
 }
 
-// create the ec2 instance 
-
+// AMI Data
 data "aws_ami" "getami" {
   most_recent = true
-  owners = [ "amazon" ]
-  
+  owners      = ["amazon"]
+
   filter {
     name   = "name"
     values = ["amzn2-ami-hvm-*-x86_64-gp2"]
   }
+}
+
+// EC2 Instance 1
+resource "aws_instance" "myec2" {
+  ami                         = data.aws_ami.getami.id
+  instance_type               = var.instance_type
+  key_name                    = aws_key_pair.SSH.key_name
+  availability_zone           = keys(var.private_subnets)[0]
+  subnet_id                   = values(aws_subnet.private_subnets)[0].id
+  vpc_security_group_ids      = [aws_security_group.webSG.id]
+
+  root_block_device {
+    encrypted = true
+  }
+
+  user_data = <<-EOF
+    #!/bin/bash
+    yum update -y
+    yum install httpd -y
+    systemctl start httpd
+    systemctl enable httpd
+    echo "This is server *1* in AWS Region eu-north-1" > /var/www/html/index.html
+  EOF
 
   tags = {
-    "free-tier" = "true"
+    Name = "web_instance_1"
   }
 }
 
-resource "aws_instance" "myec2" {
-  ami = data.aws_ami.getami.id
-  instance_type = var.instance_type
-  key_name = "AuthSSH"
-  availability_zone = "eu-north-1a"
-  vpc_security_group_ids = [aws_security_group.webSG.id]
-  subnet_id = aws_subnet.private_subnets["eu-north-1a"].id
-
-  root_block_device {
-    encrypted = true
-  }
-
-  user_data = <<-EOF
-      #!/bin/bash
-        yum update -y
-        yum install httpd -y     
-        systemctl start httpd    
-        systemctl enable httpd   
-        echo "This is server *1* in AWS Region eu-north-1 in AZ eu-north-1a " > /var/www/html/index.html
-        EOF
-    tags = {
-      Name = "web_instance"
-    }
-}
-
+// EC2 Instance 2
 resource "aws_instance" "app" {
-  ami = data.aws_ami.getami.id
-  instance_type = var.instance_type
-  key_name = "AuthSSH"
-  availability_zone = "eu-north-1b"
-  vpc_security_group_ids = [aws_security_group.webSG.id]
-  subnet_id = aws_subnet.private_subnets["eu-north-1b"].id
+  ami                         = data.aws_ami.getami.id
+  instance_type               = var.instance_type
+  key_name                    = aws_key_pair.SSH.key_name
+  availability_zone           = keys(var.private_subnets)[1]
+  subnet_id                   = values(aws_subnet.private_subnets)[1].id
+  vpc_security_group_ids      = [aws_security_group.webSG.id]
 
   root_block_device {
     encrypted = true
   }
+
   user_data = <<-EOF
-      #!/bin/bash
-        yum update -y
-        yum install httpd -y     
-        systemctl start httpd    
-        systemctl enable httpd   
-        echo "This is server *2* in AWS Region eu-north-1 in AZ eu-north-1b " > /var/www/html/index.html
-        EOF
-    tags = {
-      Name = "web_instance"
-    }
+    #!/bin/bash
+    yum update -y
+    yum install httpd -y
+    systemctl start httpd
+    systemctl enable httpd
+    echo "This is server *2* in AWS Region eu-north-1" > /var/www/html/index.html
+  EOF
+
+  tags = {
+    Name = "web_instance_2"
+  }
 }
 
-// create the load balancer with its SG and TG , Also Listeners 
-// First the SG ALB 
+// ALB Security Group
 resource "aws_security_group" "ALBSG" {
-  name = "ALBSG"
-  vpc_id = aws_vpc.mainvpc.id
-  description = "THis is a security group for application load balancer"
+  name        = "ALBSG"
+  description = "Security group for ALB"
+  vpc_id      = aws_vpc.mainvpc.id
 
-   dynamic "ingress" {
+  dynamic "ingress" {
     for_each = var.allowed_ports_alb
     iterator = port
     content {
       from_port   = port.value
       to_port     = port.value
       protocol    = "tcp"
-      cidr_blocks = ["0.0.0.0/0"] 
+      cidr_blocks = ["0.0.0.0/0"]
     }
   }
-    egress {
+
+  egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
@@ -229,30 +242,25 @@ resource "aws_security_group" "ALBSG" {
   tags = {
     Name = "alb-sg"
   }
-
 }
-
-// create ALB 
+// ALB
 resource "aws_lb" "project_alb" {
-  name = "project-alb"
-  internal = false
+  name               = "project-alb"
+  internal           = false
   load_balancer_type = "application"
-  security_groups = [aws_security_group.ALBSG.id]
-  subnets = values(aws_subnet.public_subnets)[*].id
+  security_groups    = [aws_security_group.ALBSG.id]
+  subnets            = [for subnet in aws_subnet.public_subnets : subnet.id]
 
-    tags = {
+  tags = {
     Name = "project-alb"
   }
 }
-
-// create the ALB target group 
+// Target Group
 resource "aws_lb_target_group" "project_tg" {
-  name = "target-group"
-  port = 80
+  name     = "target-group"
+  port     = 80
   protocol = "HTTP"
-  vpc_id = aws_vpc.mainvpc.id
-
-  depends_on = [ aws_vpc.mainvpc ]
+  vpc_id   = aws_vpc.mainvpc.id
 
   health_check {
     path                = "/"
@@ -267,80 +275,72 @@ resource "aws_lb_target_group" "project_tg" {
   tags = {
     Name = "target-group"
   }
-
 }
 
-
-// listener 
-
+// Listener
 resource "aws_lb_listener" "listener_lb" {
   load_balancer_arn = aws_lb.project_alb.arn
-  port = 80
-  protocol = "HTTP"
+  port              = 80
+  protocol          = "HTTP"
 
   default_action {
-    type = "forward"
+    type             = "forward"
     target_group_arn = aws_lb_target_group.project_tg.arn
   }
 }
-
-// EC2 Launch template 
+// Launch Template
 resource "aws_launch_template" "scaled_template" {
-  name_prefix = "scaled_launch_instance"
-  image_id = data.aws_ami.getami.id
-  instance_type = var.instance_type
-  vpc_security_group_ids = [ aws_security_group.webSG.id ]
+  name_prefix            = "scaled_launch_instance"
+  image_id               = data.aws_ami.getami.id
+  instance_type          = var.instance_type
+  vpc_security_group_ids = [aws_security_group.webSG.id]
 
   lifecycle {
     create_before_destroy = true
   }
 
   tags = {
-  Name = "project-alb"
-  Environment = "dev"
-}
-
-}
-// create SG for Auto scaling
-resource "aws_autoscaling_group" "ec2_auto_scaling" {
-  min_size = 1
-  max_size = 3
-  desired_capacity = 1
-   launch_template {
-    id      = aws_launch_template.scaled_template.id
+    Name        = "project-alb"
+    Environment = "dev"
   }
-  vpc_zone_identifier = values(aws_subnet.private_subnets)[*].id
+}
+// Auto Scaling Group
+resource "aws_autoscaling_group" "ec2_auto_scaling" {
+  min_size         = 1
+  max_size         = 3
+  desired_capacity = 1
 
-    tag {
+  launch_template {
+    id = aws_launch_template.scaled_template.id
+  }
+
+  vpc_zone_identifier = [for subnet in aws_subnet.private_subnets : subnet.id]
+
+  tag {
     key                 = "Name"
     value               = "autoscaled-ec2"
     propagate_at_launch = true
   }
 }
 
-// associate the ASG with ALB TG
-
+// ASG Target Group Attachment
 resource "aws_autoscaling_attachment" "asg_tg" {
   autoscaling_group_name = aws_autoscaling_group.ec2_auto_scaling.id
-  lb_target_group_arn = aws_lb_target_group.project_tg.arn
+  lb_target_group_arn    = aws_lb_target_group.project_tg.arn
 }
-
-// database subnet group
-
+// RDS Subnet Group
 resource "aws_db_subnet_group" "db_subnet" {
-  name = "rds-db-subnet"
-  subnet_ids = values(aws_subnet.private_subnets)[*].id
+  name       = "rds-db-subnet"
+  subnet_ids = [for subnet in aws_subnet.private_subnets : subnet.id]
 
-    tags = {
+  tags = {
     Name = "rds-db-subnet"
   }
-
 }
-
-// create the db SG
+// RDS Security Group
 resource "aws_security_group" "db_sg" {
   name        = "db-sg"
-  description = "security group for RDS database"
+  description = "Security group for RDS"
   vpc_id      = aws_vpc.mainvpc.id
 
   ingress {
@@ -361,9 +361,7 @@ resource "aws_security_group" "db_sg" {
     Name = "db-sg"
   }
 }
-
-// create database instance
-
+// RDS Instance
 resource "aws_db_instance" "rds_instance" {
   allocated_storage      = 20
   identifier             = "rds-terraform"
@@ -378,6 +376,7 @@ resource "aws_db_instance" "rds_instance" {
   skip_final_snapshot    = true
   db_subnet_group_name   = aws_db_subnet_group.db_subnet.name
   vpc_security_group_ids = [aws_security_group.db_sg.id]
+
   tags = {
     Name = "rds-instance"
   }
